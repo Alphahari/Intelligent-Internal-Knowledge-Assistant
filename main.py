@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from IPython.display import display, Image
 from typing_extensions import TypedDict
 from typing import Annotated
-from langchain_core.messages import AnyMessage, HumanMessage
+from langchain_core.messages import AnyMessage, HumanMessage, AIMessage
 from langgraph.graph.message import add_messages
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -47,11 +47,20 @@ def main():
     display(Image(graph.get_graph().draw_mermaid_png()))
 
     response = graph.invoke({
-        "messages": [HumanMessage(content="Can you find anything relate to AI in slack channel?")]
+        "messages": [HumanMessage(content="Authors of Attention is all you need")]
     })
 
+
+
     for m in response["messages"]:
-        print(m.content)
+        if isinstance(m, AIMessage):
+            tool_calls = m.additional_kwargs.get("tool_calls", [])
+            for call in tool_calls:
+                function = call.get("function", {})
+                tool_name = function.get("name", "Unknown tool")
+                print(f"\nTool being called: {tool_name}")
+        else:
+            print(m.content)
 
 if __name__ == "__main__":
     main()
