@@ -96,8 +96,3 @@ The agent will:
 ## 📜 License
 
 This project is licensed under the MIT License.
-
-## 👤 Author
-
-**Hari Krishna Reddy**  
-GitHub: [Alphahari](https://github.com/Alphahari)
