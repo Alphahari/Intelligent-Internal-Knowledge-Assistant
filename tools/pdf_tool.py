@@ -1,4 +1,5 @@
 import os
+import time
 from uuid import uuid4
 from dotenv import load_dotenv
 from langchain_core.tools.retriever import create_retriever_tool
@@ -8,8 +9,10 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from pinecone import Pinecone, ServerlessSpec
 from pinecone_text.sparse import BM25Encoder
 from langchain_community.retrievers import PineconeHybridSearchRetriever
+from langchain_core.documents import Document
+from langchain_core.tools import Tool
 
-def load_pdf(file_path: str = "attention.pdf", index_name: str = "nlp-project"):
+def load_pdf(file_path: str = "attention.pdf", index_name: str = "pdf"):
     # Load environment variables
     load_dotenv()
     os.environ["HF_TOKEN"] = os.getenv("HF_TOKEN")
@@ -41,8 +44,6 @@ def load_pdf(file_path: str = "attention.pdf", index_name: str = "nlp-project"):
 
         # Initialize Pinecone
         pc = Pinecone(api_key=PINECONE_API)
-
-        index_name = "nlp-project"
         # Create or connect to index
         if index_name not in pc.list_indexes().names():
             pc.create_index(
@@ -54,36 +55,31 @@ def load_pdf(file_path: str = "attention.pdf", index_name: str = "nlp-project"):
 
         index = pc.Index(index_name)
 
-        # Generate embeddings
-        dense_embeddings = huggingface_embeddings.embed_documents(texts)
-        sparse_embeddings = [bm25_encoder.encode_documents(text) for text in texts]
+        # # Generate dense and sparse embeddings
+        # dense_embeddings = huggingface_embeddings.embed_documents(texts)
+        # sparse_embeddings = [bm25_encoder.encode_documents(text) for text in texts]
 
-        # Generate dense and sparse embeddings
-        dense_embeddings = huggingface_embeddings.embed_documents(texts)
-        sparse_embeddings = [bm25_encoder.encode_documents(text) for text in texts]
+        # # Prepare vectors for upsert
+        # vectors = []
+        # for i in range(len(texts)):
+        #     vectors.append({
+        #         'id': str(uuid4()),
+        #         'values': dense_embeddings[i],
+        #         'sparse_values': {
+        #             'indices': sparse_embeddings[i]['indices'],
+        #             'values': sparse_embeddings[i]['values']
+        #         },
+        #         'metadata': {
+        #             'source': docs[i].metadata["source"],
+        #             'page': docs[i].metadata["page"],
+        #             'page_label': docs[i].metadata["page_label"],
+        #             'creation_date': docs[i].metadata["creationdate"],
+        #             'text': texts[i]  # Optional - keep original if needed
+        #         }
+        #     })
 
-        # Prepare vectors for upsert
-        vectors = []
-        for i in range(len(texts)):
-            vectors.append({
-                'id': str(uuid4()),
-                'values': dense_embeddings[i],
-                'sparse_values': {
-                    'indices': sparse_embeddings[i]['indices'],
-                    'values': sparse_embeddings[i]['values']
-                },
-                'metadata': {
-                    'source': docs[i].metadata["source"],
-                    'page': docs[i].metadata["page"],
-                    'page_label': docs[i].metadata["page_label"],
-                    'creation_date': docs[i].metadata["creationdate"],
-                    'text': texts[i]  # Optional - keep original if needed
-                }
-            })
-
-        # Upsert vectors into Pinecone
-        index.upsert(vectors=vectors)
-        print(f"Upserted {len(vectors)} vectors")
+        # # Upsert vectors into Pinecone
+        # index.upsert(vectors=vectors)
 
         # Create retriever
         retriever = PineconeHybridSearchRetriever(
@@ -92,10 +88,20 @@ def load_pdf(file_path: str = "attention.pdf", index_name: str = "nlp-project"):
             index=index,
             text_key="text" 
         )
-        return create_retriever_tool(
-            retriever,
-            "Search Tool",
-            "Search across all documents (including PDFs) for relevant information"
+        time.sleep(10)
+
+
+        def pdf_search_raw(query: str) -> list[Document]:
+            try:
+                results = retriever.invoke(query)
+                return results
+            except Exception as e:
+                return [Document(page_content=f"Error during search: {e}", metadata={})]
+
+        return Tool(
+            name="Pdf Search Tool",
+            func=pdf_search_raw,
+            description="Return raw documents matching the query from PDF with full metadata"
         )
 
 

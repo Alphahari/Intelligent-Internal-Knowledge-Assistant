@@ -5,11 +5,10 @@ from langchain_groq import ChatGroq
 from dotenv import load_dotenv
 from typing_extensions import TypedDict
 from typing import Annotated
-from langchain_core.messages import AnyMessage
+from langchain_core.messages import AnyMessage, ToolMessage
 from langgraph.graph.message import add_messages
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
-from pinecone import Pinecone, ServerlessSpec
 import os
 
 load_dotenv()
@@ -24,18 +23,7 @@ def make_tools_calling_llm(llm_with_tools):
 
 def main():
     os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API")
-    os.environ["PINECONE_API"] = os.getenv("PINECONE_API")
     os.environ["HF_TOKEN"] = os.getenv("HF_TOKEN")
-    
-    # Initialize Pinecone index (ensure it exists)
-    pc = Pinecone(api_key=os.getenv("PINECONE_API"))
-    if "nlp-project" not in pc.list_indexes().names():
-        pc.create_index(
-            name="nlp-project",
-            dimension=768,
-            metric="dotproduct",
-            spec=ServerlessSpec(cloud="aws", region="us-east-1")
-        )
 
     llm = ChatGroq(model="qwen-qwq-32b")
 
@@ -64,8 +52,14 @@ def main():
     response = graph.invoke({
         "messages": "Authors of Attention is all you need"
     })
+    for msg in response["messages"]:
+        if isinstance(msg, ToolMessage):
+            documents = eval(msg.content)
+            for i, doc in enumerate(documents):
+                print(f"\nResult {i + 1}")
+                print("Source:", doc.metadata.get("source"))
+                print("Content:\n", doc.page_content)
 
-    print(response)
 
 if __name__ == "__main__":
     main()

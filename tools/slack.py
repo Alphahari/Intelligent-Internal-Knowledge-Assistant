@@ -8,7 +8,8 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from pinecone import Pinecone, ServerlessSpec
 from pinecone_text.sparse import BM25Encoder
 from langchain_community.retrievers import PineconeHybridSearchRetriever
-from langchain_core.tools.retriever import create_retriever_tool
+import time
+from langchain_core.tools import Tool
 
 load_dotenv()
 
@@ -30,7 +31,7 @@ def read_messages(channel_id, limit=20):
         print("Slack API error:", e.response["error"])
         return []
 
-def slack_message_retriever(channel_id=ALLOWED_CHANNEL_ID, limit=20, index_name="nlp-project"):
+def slack_message_retriever(channel_id=ALLOWED_CHANNEL_ID, limit=20, index_name="slack"):
     """Load and index Slack messages in Pinecone with hybrid search"""
     raw_messages = read_messages(channel_id, limit)
     documents = []
@@ -72,26 +73,26 @@ def slack_message_retriever(channel_id=ALLOWED_CHANNEL_ID, limit=20, index_name=
     index = pc.Index(index_name)
     
     # Generate and upsert embeddings
-    dense_embeddings = embeddings.embed_documents(texts)
-    sparse_embeddings = [bm25_encoder.encode_documents(text) for text in texts]
+    # dense_embeddings = embeddings.embed_documents(texts)
+    # sparse_embeddings = [bm25_encoder.encode_documents(text) for text in texts]
     
-    vectors = []
-    for i, doc in enumerate(docs):
-        vectors.append({
-            'id': str(i),
-            'values': dense_embeddings[i],
-            'sparse_values': {
-                'indices': sparse_embeddings[i]['indices'],
-                'values': sparse_embeddings[i]['values']
-            },
-            'metadata': {
-                'text': texts[i],
-                'user': doc.metadata["user"],
-                'channel': doc.metadata["channel"],
-                'source': "Slack Channel"
-            }
-        })
-    index.upsert(vectors=vectors)
+    # vectors = []
+    # for i, doc in enumerate(docs):
+    #     vectors.append({
+    #         'id': str(i),
+    #         'values': dense_embeddings[i],
+    #         'sparse_values': {
+    #             'indices': sparse_embeddings[i]['indices'],
+    #             'values': sparse_embeddings[i]['values']
+    #         },
+    #         'metadata': {
+    #             'text': texts[i],
+    #             'user': doc.metadata["user"],
+    #             'channel': doc.metadata["channel"],
+    #             'source': "Slack Channel"
+    #         }
+    #     })
+    # index.upsert(vectors=vectors)
     
     # Create retriever
     retriever = PineconeHybridSearchRetriever(
@@ -101,11 +102,18 @@ def slack_message_retriever(channel_id=ALLOWED_CHANNEL_ID, limit=20, index_name=
         text_key="text"
     )
     
+    time.sleep(10)
+    def search_raw(query: str) -> list[Document]:
+        try:
+            results = retriever.invoke(query)
+            return results
+        except Exception as e:
+            return [Document(page_content=f"Error during search: {e}", metadata={})]    
     # Create tool
-    return create_retriever_tool(
-        retriever,
-        "Search Tool",
-        "Search across all documents (including PDFs) for relevant information"
+    return Tool(
+        name="Slack Search Tool",
+        func=search_raw,
+        description="Return raw documents matching the query from Slack Channel with full metadata"
     )
 
 if __name__ == "__main__":

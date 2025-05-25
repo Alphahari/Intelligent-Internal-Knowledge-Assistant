@@ -7,8 +7,10 @@ from langchain_community.retrievers import PineconeHybridSearchRetriever
 from langchain_core.tools.retriever import create_retriever_tool
 from langchain.schema import Document
 import os
+import time
+from langchain_core.tools import Tool
 
-def Text_Document(file_path: str, index_name: str = "nlp-project"):
+def Text_Document(file_path: str, index_name: str = "txt"):
     """Load and index text documents in Pinecone with hybrid search"""
     # Initialize components
     loader = TextLoader(file_path)
@@ -43,26 +45,25 @@ def Text_Document(file_path: str, index_name: str = "nlp-project"):
     index = pc.Index(index_name)
     
     # Generate and upsert embeddings
-    dense_embeddings = embeddings.embed_documents(texts)
-    sparse_embeddings = [bm25_encoder.encode_documents(text) for text in texts]
+    # dense_embeddings = embeddings.embed_documents(texts)
+    # sparse_embeddings = [bm25_encoder.encode_documents(text) for text in texts]
     
-    vectors = []
-    for i, text in enumerate(texts):
-        vectors.append({
-            'id': str(i),
-            'values': dense_embeddings[i],
-            'sparse_values': {
-                'indices': sparse_embeddings[i]['indices'],
-                'values': sparse_embeddings[i]['values']
-            },
-            'metadata': {
-                'text': text,
-                'source': docs[i].metadata["source"]
-            }
-        })
+    # vectors = []
+    # for i, text in enumerate(texts):
+    #     vectors.append({
+    #         'id': str(i),
+    #         'values': dense_embeddings[i],
+    #         'sparse_values': {
+    #             'indices': sparse_embeddings[i]['indices'],
+    #             'values': sparse_embeddings[i]['values']
+    #         },
+    #         'metadata': {
+    #             'text': text,
+    #             'source': docs[i].metadata["source"]
+    #         }
+    #     })
     
-    index.upsert(vectors=vectors)
-    
+    # index.upsert(vectors=vectors)
     # Create retriever
     retriever = PineconeHybridSearchRetriever(
         embeddings=embeddings,
@@ -70,14 +71,19 @@ def Text_Document(file_path: str, index_name: str = "nlp-project"):
         index=index,
         text_key="text"
     )
-    
+    time.sleep(10)
+    def search_raw(query: str) -> list[Document]:
+        try:
+            results = retriever.invoke(query)
+            return results
+        except Exception as e:
+            return [Document(page_content=f"Error during search: {e}", metadata={})]    
     # Create tool
-    return create_retriever_tool(
-        retriever,
-        "Search Tools",
-        "Search across all documents (including PDFs) for relevant information"
+    return Tool(
+        name="Text Documents Search Tool",
+        func=search_raw,
+        description="Return raw documents matching the query from Text file with full metadata"
     )
-
 if __name__ == "__main__":
     try:
         tool = Text_Document("speech.txt")
