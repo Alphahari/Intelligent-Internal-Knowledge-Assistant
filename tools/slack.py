@@ -4,8 +4,10 @@ from dotenv import load_dotenv
 import os
 from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
-from langchain_ollama import OllamaEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
+from pinecone import Pinecone, ServerlessSpec
+from pinecone_text.sparse import BM25Encoder
+from langchain_community.retrievers import PineconeHybridSearchRetriever
 from langchain_core.tools.retriever import create_retriever_tool
 
 load_dotenv()
@@ -28,30 +30,83 @@ def read_messages(channel_id, limit=20):
         print("Slack API error:", e.response["error"])
         return []
 
-def slack_message_retriever(channel_id=ALLOWED_CHANNEL_ID, limit=20):
-    """Load and index Slack messages for retrieval"""
+def slack_message_retriever(channel_id=ALLOWED_CHANNEL_ID, limit=20, index_name="nlp-project"):
+    """Load and index Slack messages in Pinecone with hybrid search"""
     raw_messages = read_messages(channel_id, limit)
     documents = []
-
+    
     for msg in raw_messages:
         if msg.get("subtype") != "channel_join":
             user = msg.get("user", "unknown")
             text = msg.get("text", "")
-            documents.append(Document(page_content=text, metadata={"user": user}))
-    # print(documents)
-
+            documents.append(Document(page_content=text, metadata={"user": user, "channel": channel_id}))
+    
+    # Split documents
     splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=100)
     docs = splitter.split_documents(documents)
-    # print(docs)
-    vectordb = FAISS.from_documents(docs, OllamaEmbeddings(model="deepseek-r1"))
-    retriever = vectordb.as_retriever()
-
-    slack_tool = create_retriever_tool(
-        retriever,
-        name="SlackMessageSearch",
-        description="Search Slack messages for relevant responses or discussions."
+    texts = [doc.page_content for doc in docs]
+    
+    # Initialize embeddings
+    embeddings = HuggingFaceEmbeddings(
+        model_name="BAAI/bge-base-en-v1.5",
+        model_kwargs={'device': 'cpu'},
+        encode_kwargs={'normalize_embeddings': True}
     )
-    return slack_tool
+    
+    # Initialize BM25 encoder
+    bm25_encoder = BM25Encoder().default()
+    bm25_encoder.fit(texts)
+    
+    # Initialize Pinecone
+    pc = Pinecone(api_key=os.getenv("PINECONE_API"))
+    
+    # Create or connect to index
+    if index_name not in pc.list_indexes().names():
+        pc.create_index(
+            name=index_name,
+            dimension=768,
+            metric="dotproduct",
+            spec=ServerlessSpec(cloud="aws", region="us-east-1")
+        )
+    
+    index = pc.Index(index_name)
+    
+    # Generate and upsert embeddings
+    dense_embeddings = embeddings.embed_documents(texts)
+    sparse_embeddings = [bm25_encoder.encode_documents(text) for text in texts]
+    
+    vectors = []
+    for i, doc in enumerate(docs):
+        vectors.append({
+            'id': str(i),
+            'values': dense_embeddings[i],
+            'sparse_values': {
+                'indices': sparse_embeddings[i]['indices'],
+                'values': sparse_embeddings[i]['values']
+            },
+            'metadata': {
+                'text': texts[i],
+                'user': doc.metadata["user"],
+                'channel': doc.metadata["channel"],
+                'source': "Slack Channel"
+            }
+        })
+    index.upsert(vectors=vectors)
+    
+    # Create retriever
+    retriever = PineconeHybridSearchRetriever(
+        embeddings=embeddings,
+        sparse_encoder=bm25_encoder,
+        index=index,
+        text_key="text"
+    )
+    
+    # Create tool
+    return create_retriever_tool(
+        retriever,
+        "Search Tool",
+        "Search across all documents (including PDFs) for relevant information"
+    )
 
 if __name__ == "__main__":
     try:

@@ -136,3 +136,5 @@ dist
 .pnp.*
 
 *__pycache__
+*.json
+*.ipynb

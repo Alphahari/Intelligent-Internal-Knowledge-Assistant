@@ -17,3 +17,8 @@ slack_sdk
 langchain_ollama
 langchain_groq
 langgraph
+langchain-huggingface
+langchain-pinecone
+pinecone
+pinecone-text
+Ipython
