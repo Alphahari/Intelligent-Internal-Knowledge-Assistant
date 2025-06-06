@@ -137,4 +137,6 @@ dist
 
 *__pycache__
 *.json
-*.ipynb
+*.wav
+*.mp4
+nlp_project.png

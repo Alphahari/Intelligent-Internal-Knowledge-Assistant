@@ -1,137 +1,118 @@
-# 🧠 AskAtlas — Internal Knowledge Q&A Assistant
+Here's the updated README.md with the system architecture diagram, formatted for direct download:
 
-AskAtlas is an internal knowledge retrieval assistant that leverages semantic search and retrieval-augmented generation (RAG) to help team members query institutional knowledge scattered across platforms like Slack, Notion, Google Docs, and Emails. It enables fast, intelligent, domain-aware Q&A over your company’s data.
+```markdown
+# Intelligent Internal Knowledge Assistant
 
----
+## Overview
+This project is an intelligent knowledge assistant that unifies scattered organizational knowledge across multiple platforms (PDFs, text documents, Slack, images, videos) into a centralized queryable interface. Leveraging Natural Language Processing (NLP) and Hybrid Retrieval-Augmented Generation (RAG), it provides contextually relevant answers with metadata through a conversational interface.
 
-## 📘 Overview
+## Key Features
+- **Multi-source Ingestion**: Processes PDFs, text files, Slack messages, images (OCR), and videos (speech-to-text)
+- **Hybrid Retrieval**: Combines BM25 keyword search and semantic vector embeddings
+- **Metadata-rich Responses**: Returns source documents with contextual metadata
+- **Modular Architecture**: Extensible tools for different data sources
+- **Conversational Agent**: LangGraph-powered interface with Groq LLM
 
-AskAtlas ingests documents from internal sources, preprocesses and chunks them into semantically meaningful units, embeds these chunks into a vector space for similarity search, and uses a large language model (LLM) to generate accurate, context-aware answers based on the retrieved information.
+## System Architecture
+```mermaid
+graph TB
+    A[Data Ingestion] --> B[Data Preprocessing]
+    B --> C[Embedding Layer]
+    C --> D[BM25 Encoders]
+    C --> E[Vector Embeddings]
+    D --> F[Sparse Vectors]
+    E --> G[Dense Vectors]
+    F --> H[Vector Database]
+    G --> H
+    H --> I[Index Text]
+    H --> J[Index Search]
+    I --> K[Retrieve by Keyword]
+    J --> L[Retrieve by Meaning]
+    M[User Query] --> K
+    M --> L
+    K --> N[Hybrid Results]
+    L --> N
+    N --> O[ReRanked Results]
+```
 
----
+## Workflow Explanation
+1. **Data Ingestion**: Accepts multiple formats (PDFs, text, Slack, images, videos)
+2. **Preprocessing**:
+   - Text extraction (PyPDF, Tesseract OCR, speech-to-text)
+   - Document chunking with metadata preservation
+3. **Embedding Layer**:
+   - Dual-path processing (sparse + dense vectors)
+   - BM25 for keyword indexing
+   - HuggingFace embeddings for semantic meaning
+4. **Vector Database** (Pinecone):
+   - Stores hybrid vectors
+   - Enables efficient similarity searches
+5. **Query Processing**:
+   - Parallel sparse+dense retrieval
+   - Results fusion and reranking
+   - Metadata-enriched responses
 
-## 🏗️ Key Modules
+## Modules
+| Module | Function | Key Technologies |
+|--------|----------|------------------|
+| `pdf_tool.py` | PDF processing | PyPDFLoader, Pinecone |
+| `document_loader.py` | Text processing | TextLoader, Recursive Splitter |
+| `slack.py` | Message retrieval | Slack SDK, BM25 Encoding |
+| `video.py` | Speech-to-text | MoviePy, SpeechRecognition |
+| `ocr.py` | Image processing | OpenCV, Tesseract |
+| `index.ipynb` | Main interface | LangGraph, ChatGroq LLM |
 
-### 1. **Data Ingestion**
-- Sources: Slack, Notion, Google Docs, Emails
-- Normalizes content to a common format:
+## Quick Start
+```bash
+# 1. Clone repository
+git clone https://github.com/yourrepo/knowledge-assistant.git
+cd knowledge-assistant
+
+# 2. Setup environment
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# 3. Configure environment variables
+echo "PINECONE_API=your_api_key" >> .env
+echo "GROQ_API=your_api_key" >> .env
+
+# 4. Launch Jupyter
+jupyter lab index.ipynb
+```
+
+## Query Examples
+```python
+# PDF query
+"Who are the authors of 'Attention Is All You Need'?"
+
+# Slack search
+"Show recent discussions about API deadlines"
+
+# Video content
+"What technical concepts were mentioned in the project video?"
+```
+
+## Sample Response
 ```json
-{
-  "source": "Slack",
-  "content": "This is a message",
-  "metadata": {
-    "author": "John Doe",
-    "timestamp": "2023-05-01",
-    "channel": "#product"
+[
+  {
+    "content": "Provided proper attribution is provided, Google hereby grants permission...",
+    "metadata": {
+      "source": "attention.pdf",
+      "page": 0
+    }
+  },
+  {
+    "content": "Ashish Vaswani, Noam Shazeer et al.",
+    "metadata": {
+      "source": "Slack",
+      "channel": "research-papers"
+    }
   }
-}
+]
 ```
 
-### 2. **Preprocessing & Chunking**
-- Cleans and chunks documents
-- Retains metadata for filtering and context
-
-### 3. **Embedding & Vector Store**
-- Embedding Models: OpenAI or SentenceTransformers
-- Vector DB: FAISS, Weaviate, or Pinecone
-
-### 4. **Retriever**
-- Performs semantic search using cosine similarity
-- Optional: hybrid keyword + vector retrieval
-
-### 5. **Q&A Generator (RAG)**
-- Prompts an LLM with context from retrieved chunks and a user query
-- Example Prompt:
+## License
+MIT License - See [LICENSE](LICENSE) for details
 ```
-Using the context below, answer the question as accurately as possible. 
-If the answer is not in the context, say “Not found.”
-
-Context:
-[retrieved content]
-
-Question:
-[user's question]
-```
-
-### 6. **Interface Layer**
-- CLI, Streamlit, or Gradio UI
-- Optional: Slackbot
-
-### 7. **Feedback Loop**
-- Logs queries, answers, and feedback (👍👎)
-- Used for continuous improvement
-
-### 8. **Analytics (Optional)**
-- Tracks common queries, content gaps, and usage patterns
-
-### 9. **Access Control (Optional)**
-- Metadata filtering or role-based access for sensitive content
-
----
-
-## 🛠️ Tech Stack
-- **Languages**: Python
-- **Ingestion**: Slack API, Notion API, Google Drive API, Gmail API
-- **Embeddings**: OpenAI, SentenceTransformers
-- **Vector DB**: FAISS, Pinecone, Weaviate
-- **NLP Libraries**: LangChain, Haystack
-- **UI**: Streamlit, Gradio
-- **LLMs**: GPT-4, GPT-3.5, Claude, Mistral
-
----
-
-## 🔍 Example Use Cases
-- Onboarding support
-- Engineering knowledge base
-- Internal IT helpdesk
-- Cross-functional documentation lookup
-
----
-
-## 📦 Document Chunk Schema
-```json
-{
-  "id": "doc_123",
-  "content": "This is a paragraph or chunk of text.",
-  "metadata": {
-    "source": "Notion",
-    "document_title": "Onboarding Guide",
-    "author": "Jane Smith",
-    "date": "2023-04-10",
-    "path": "/notion/onboarding.md"
-  }
-}
-```
-
----
-
-## ✅ Goals
-- Fast, natural-language access to internal documentation
-- Reduce time wasted searching across tools
-- Preserve and scale institutional knowledge
-- Minimize repeated queries
-
----
-
-## 📈 Future Enhancements
-- Role-based access controls
-- Integration with Confluence, Trello, Jira
-- Interactive analytics dashboard
-- Auto-tagging and clustering of queries
-
----
-
-## 📤 Deployment
-- Local CLI or web app
-- Dockerized setup
-- Cloud: Streamlit Cloud, Hugging Face Spaces, or AWS
-
----
-
-## 📚 License
-TBD — consider an open-core license for enterprise extensions.
-
----
-
-## 💡 Contributors
-Built by the AskAtlas team. Designed for anyone looking to supercharge internal search across siloed knowledge platforms.

@@ -22,3 +22,6 @@ langchain-pinecone
 pinecone
 pinecone-text
 Ipython
+moviepy
+speech-recognition
+pytesseract

@@ -1,116 +1,79 @@
 import os
 import time
+import json
 from uuid import uuid4
 from dotenv import load_dotenv
-from langchain_core.tools.retriever import create_retriever_tool
-from langchain_community.document_loaders import PyPDFLoader
+from typing import List
+from pydantic import BaseModel
+from langchain_community.document_loaders import PyPDFLoader, PyPDFDirectoryLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from pinecone import Pinecone, ServerlessSpec
 from pinecone_text.sparse import BM25Encoder
 from langchain_community.retrievers import PineconeHybridSearchRetriever
-from langchain_core.documents import Document
 from langchain_core.tools import Tool
 
-def load_pdf(file_path: str = "attention.pdf", index_name: str = "pdf"):
-    # Load environment variables
+class Metadata(BaseModel):
+    source: str
+    page: int | None = None
+
+class StructuredOutput(BaseModel):
+    content: str
+    metadata: Metadata
+
+def load_pdf(file_path: str = "attention.pdf", index_name: str = "db"):
     load_dotenv()
-    os.environ["HF_TOKEN"] = os.getenv("HF_TOKEN")
-    PINECONE_API = os.getenv("PINECONE_API")
+    pc = Pinecone(api_key=os.getenv("PINECONE_API"))
 
-    try:
-        # Load and split PDF
-        loader = PyPDFLoader(file_path)
-        documents = loader.load()
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=300,
-            chunk_overlap=100
-        )
-        docs = text_splitter.split_documents(documents)
-        texts = [doc.page_content for doc in docs]
+    loader = PyPDFLoader(file_path)
+    documents = loader.load()
+    splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=100)
+    docs = splitter.split_documents(documents)
+    texts = [doc.page_content for doc in docs]
 
-        # Initialize embeddings
-        huggingface_embeddings = HuggingFaceEmbeddings(
-            model_name="BAAI/bge-base-en-v1.5",
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': True}
-        )
+    embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-base-en-v1.5", 
+                                       model_kwargs={'device': 'cpu'}, 
+                                       encode_kwargs={'normalize_embeddings': True})
+    bm25 = BM25Encoder().default()
+    bm25.fit(texts)
 
-        # Initialize and fit BM25 encoder
-        bm25_encoder = BM25Encoder().default()
-        bm25_encoder.fit(texts)
-        bm25_encoder.dump("bm25_values.json")
-        bm25_encoder = BM25Encoder().load("bm25_values.json")
+    if index_name not in pc.list_indexes().names():
+        pc.create_index(name=index_name, dimension=768, metric="dotproduct", spec=ServerlessSpec(cloud="aws", region="us-east-1"))
 
-        # Initialize Pinecone
-        pc = Pinecone(api_key=PINECONE_API)
-        # Create or connect to index
-        if index_name not in pc.list_indexes().names():
-            pc.create_index(
-                name=index_name,
-                dimension=768,
-                metric="dotproduct",
-                spec=ServerlessSpec(cloud="aws", region="us-east-1")
-            )
+    index = pc.Index(index_name)
+    dense = embeddings.embed_documents(texts)
+    sparse = [bm25.encode_documents(text) for text in texts]
 
-        index = pc.Index(index_name)
+    vectors = [
+        {
+            'id': str(uuid4()),
+            'values': dense[i],
+            'sparse_values': {
+                'indices': sparse[i]['indices'],
+                'values': sparse[i]['values']
+            },
+            'metadata': {
+                'text': texts[i],
+                'source': docs[i].metadata.get("source", "unknown"),
+                'page': docs[i].metadata.get("page")
+            }
+        } for i in range(len(texts))
+    ]
+    index.upsert(vectors=vectors)
+    retriever = PineconeHybridSearchRetriever(embeddings=embeddings, sparse_encoder=bm25, index=index, text_key="text")
+    time.sleep(5)
 
-        # # Generate dense and sparse embeddings
-        # dense_embeddings = huggingface_embeddings.embed_documents(texts)
-        # sparse_embeddings = [bm25_encoder.encode_documents(text) for text in texts]
+    def search(query: str) -> List[StructuredOutput]:
+        results = retriever.invoke(query)
+        return [
+            StructuredOutput(
+                content=res.page_content,
+                metadata=Metadata(source=res.metadata.get("source", "unknown"), page=res.metadata.get("page"))
+            ) for res in results
+        ]
 
-        # # Prepare vectors for upsert
-        # vectors = []
-        # for i in range(len(texts)):
-        #     vectors.append({
-        #         'id': str(uuid4()),
-        #         'values': dense_embeddings[i],
-        #         'sparse_values': {
-        #             'indices': sparse_embeddings[i]['indices'],
-        #             'values': sparse_embeddings[i]['values']
-        #         },
-        #         'metadata': {
-        #             'source': docs[i].metadata["source"],
-        #             'page': docs[i].metadata["page"],
-        #             'page_label': docs[i].metadata["page_label"],
-        #             'creation_date': docs[i].metadata["creationdate"],
-        #             'text': texts[i]  # Optional - keep original if needed
-        #         }
-        #     })
+    def tool_wrapper(query: str) -> str:
+        outputs = search(query)
+        return json.dumps([o.model_dump() for o in outputs], indent=2)
 
-        # # Upsert vectors into Pinecone
-        # index.upsert(vectors=vectors)
-
-        # Create retriever
-        retriever = PineconeHybridSearchRetriever(
-            embeddings=huggingface_embeddings,
-            sparse_encoder=bm25_encoder,
-            index=index,
-            text_key="text" 
-        )
-        time.sleep(10)
-
-
-        def pdf_search_raw(query: str) -> list[Document]:
-            try:
-                results = retriever.invoke(query)
-                return results
-            except Exception as e:
-                return [Document(page_content=f"Error during search: {e}", metadata={})]
-
-        return Tool(
-            name="Pdf Search Tool",
-            func=pdf_search_raw,
-            description="Return raw documents matching the query from PDF with full metadata"
-        )
-
-
-    except Exception as e:
-        raise RuntimeError(f"Failed to initialize PDF retriever: {str(e)}")
-
-if __name__ == "__main__":
-    try:
-        tool_call = load_pdf("attention.pdf")
-        print(tool_call.name)
-    except Exception as e:
-        print(f"Error: {str(e)}")
+    return Tool(name="pdf_search", func=tool_wrapper, description="Search PDF content with metadata")
