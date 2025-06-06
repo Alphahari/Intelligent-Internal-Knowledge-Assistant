@@ -1,6 +1,3 @@
-Here's the updated README.md with the system architecture diagram, formatted for direct download:
-
-```markdown
 # Intelligent Internal Knowledge Assistant
 
 ## Overview
@@ -115,4 +112,3 @@ jupyter lab index.ipynb
 
 ## License
 MIT License - See [LICENSE](LICENSE) for details
-```
