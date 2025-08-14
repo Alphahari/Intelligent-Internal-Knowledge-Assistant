@@ -94,18 +94,17 @@ jupyter lab index.ipynb
 ```json
 [
   {
-    "content": "Provided proper attribution is provided, Google hereby grants permission...",
+    "content": "Ashish Vaswani, Noam Shazeer et al....",
     "metadata": {
       "source": "attention.pdf",
       "page": 0
     }
   },
   {
-    "content": "Ashish Vaswani, Noam Shazeer et al.",
+    "content": "API deadlines are...",
     "metadata": {
       "source": "Slack",
-      "channel": "research-papers"
-    }
+      "channel": "Backend Team"
   }
 ]
 ```
