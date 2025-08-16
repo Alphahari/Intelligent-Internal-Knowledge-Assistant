@@ -1,0 +1,1 @@
+#Agent1 in my Agentic AI Application, it contains the logic of retriver tools(from odf and doc only) and an llm which can later be grouped with other llm

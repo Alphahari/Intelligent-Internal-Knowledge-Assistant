@@ -1,20 +1,12 @@
 langchain_core
 python-dotenv
-streamlit
 langchain_community
 langserve
 fastapi
 uvicorn
 sse_starlette
-bs4
-pypdf
-chromadb
-faiss-cpu
-arxiv
-wikipedia
 langchainhub
 slack_sdk
-langchain_ollama
 langchain_groq
 langgraph
 langchain-huggingface
@@ -22,6 +14,3 @@ langchain-pinecone
 pinecone
 pinecone-text
 Ipython
-moviepy
-speech-recognition
-pytesseract
