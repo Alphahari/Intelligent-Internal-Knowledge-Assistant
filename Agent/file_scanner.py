@@ -1,6 +1,8 @@
 import os
 import hashlib
 from sqlalchemy.orm import Session
+from Agent.tools.document_loader import upsert_text
+from Agent.tools.pdf_tool import upsert_pdf
 from database import SessionLocal
 from model import Document, DocumentStatus
 
@@ -30,6 +32,13 @@ def scan_directory(directory: str):
                 print(f"Skipping processed file: {filename}")
                 continue
         else:
+            if file_path:
+                print(f"Processing document: {file_path}")
+                if file_path.endswith('.pdf'):
+                    upsert_pdf(file_path)
+                elif file_path.endswith('.txt'):
+                    upsert_text(file_path)
+                print("Document processing complete. Index updated.")
             new_doc = Document(
                 filename=filename,
                 filehash=file_hash,
