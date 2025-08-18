@@ -48,6 +48,9 @@ def create_retriever_tool(index_name: str, tool_name: str, description: str) -> 
     
     def tool_wrapper(query: str) -> str:
         outputs = search(query)
-        return json.dumps([o.model_dump() for o in outputs], indent=2)
+        return "\n\n".join(
+            f"{o.content}\n[Source: {o.metadata.source}, Page: {o.metadata.page}]" 
+            for o in outputs
+        )
     
     return Tool(name=tool_name, func=tool_wrapper, description=description)

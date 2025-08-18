@@ -34,7 +34,8 @@ def upsert_text(file_path: str, index_name: str = "db"):
         model_kwargs={'device': 'cpu'}, 
         encode_kwargs={'normalize_embeddings': True}
     )
-    bm25 = BM25Encoder().default()
+    bm25 = BM25Encoder()
+    bm25.fit(texts)
 
     dense = embeddings.embed_documents(texts)
     sparse = [bm25.encode_documents(text) for text in texts]
